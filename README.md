@@ -1,6 +1,4 @@
-# Tools
-
-## Log Extractor
+# Log Extractor
 
 A tool to extract Windows Event Logs into a reasonably usable json format for use with Elasticsearch, JQ, Grep, whatever..
 
