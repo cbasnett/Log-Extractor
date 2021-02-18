@@ -102,6 +102,8 @@ def parse_event(event):
     return evt
 
 def parse(output, gz):
+    if not os.path.exists(output):
+        os.mkdir(output)
     for c in get_all_channels():
         name = c.replace('/','_')
         try:
@@ -136,7 +138,7 @@ if __name__ == '__main__':
 
     if not args.output:
         parser.print_help()
-
+    
     elif args.gzip:
         if is_admin():
             parse(args.output, True)
