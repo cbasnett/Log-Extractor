@@ -1,15 +1,11 @@
-import win32con
-import win32evtlog
-import win32evtlogutil
-import winerror
-import pywintypes
-import xmltodict
-import xml.etree as etree
 import os, sys, ctypes, gzip, argparse, json
+import win32con, win32evtlog, win32evtlogutil, winerror, pywintypes
+import xml.etree as etree
+import xmltodict
 
-version = '0.1'
+version = '0.2'
 apptitle = 'Log Collector'
-data = '16/11/2020'
+date = '18/02/2021'
 author = 'Chris Basnett (chris.basnett@mdsec.co.uk)'
 
 def is_admin():
@@ -45,20 +41,36 @@ def get_logs(channel=None):
     else:
         query = win32evtlog.EvtQuery('Security',flags,'*',None)
 
-    bookmark = win32evtlog.EvtCreateBookmark()
-    i = 0
+    
+    bookmark = win32evtlog.EvtCreateBookmark()  # In case we want to actually save off our location to allow us to not grab all logs every time.
+
     events = True
     while events:
         events = win32evtlog.EvtNext(query,100,-1,0)
+        context = win32evtlog.EvtCreateRenderContext(win32evtlog.EvtRenderContextSystem)
         for event in events:
+            import sys
+
+            result = win32evtlog.EvtRender(event, win32evtlog.EvtRenderEventValues, Context=context)
+            provider_name_value, provider_name_variant = result[win32evtlog.EvtSystemProviderName]
+            try:
+                metadata = win32evtlog.EvtOpenPublisherMetadata(provider_name_value)
+            except:
+                metadata = None # Lazy exception here to make life simple
+            
+            try:
+                message = win32evtlog.EvtFormatMessage(metadata, event, win32evtlog.EvtFormatMessageEvent)
+            except:
+                message = "The Description for this event could not be found"
+
             event_xml = win32evtlog.EvtRender(event,win32evtlog.EvtRenderEventXml)
-            evts.append(event_xml)
-            i+=1
+            evts.append([event_xml,message])
+            
             win32evtlog.EvtUpdateBookmark(bookmark,event)
-    #print(win32evtlog.EvtRender(bookmark,win32evtlog.EvtRenderBookmark))    # Save me off the bookmark so I can resume from here next time
     return evts
 
 def parse_event(event):
+    event,message = event
     evt = {}
     data = json.loads(json.dumps(xmltodict.parse(event)))
     data = data['Event']
@@ -66,23 +78,7 @@ def parse_event(event):
     for k in data.keys():
         if k == 'EventData':
             ed = {}
-            if data.get('EventData',None):
-                if data['EventData'].get('Data',None):
-                    for d in data['EventData']['Data']:
-                        if d:
-                            if type(d) == dict:
-                                ed[d['@Name']] = d.get('#text',None)
-                            else:   # If it's not a dict, let's see if it's a list of =
-                                if '=' in d:
-                                    lines = d.split('\n')
-                                    for l in lines:
-                                        key = l.split('=')[0].strip()
-                                        try:
-                                            value = l.split('=')[1].strip()
-                                        except:
-                                            value = None
-                                        ed[key] = value
-                    evt['EventData'] = ed
+            evt['EventData'] = data.get('EventData')
         elif k == 'UserData' :
             ud = {}
 
@@ -90,15 +86,18 @@ def parse_event(event):
             evnt = {}
             d = data[k]
             for key in d.keys():
-                if type(d[key]) == dict:    # If there's a key
-                    evnt[key] = {}
-                    for k in d[key]:
-                        if '@' in k:
-                            nk = k.split('@')[1]
-                        evnt[key][nk] = d[key][k]
-                else:
-                    evnt[key] = d[key]
+                if key != '':
+                    if type(d[key]) == dict:    # If there's a key
+                        evnt[key] = {}
+                        for k in d[key]:
+                            if k != '':
+                                if '@' in k:
+                                    nk = k.split('@')[1]
+                                evnt[key][nk] = d[key][k]
+                    else:
+                        evnt[key] = d[key]
             evt['Event'] = evnt
+            evt['Message'] = message
     
     return evt
 
@@ -111,6 +110,7 @@ def parse(output, gz):
             logs = None
         if logs:
             path = os.path.join(output,name)
+            print("Writing {}".format(c))
             if gz:
                 f = gzip.open('{}.gz'.format(path),'w')
             else:
@@ -122,7 +122,7 @@ def parse(output, gz):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(add_help=True, description=apptitle)
-    parser.version = '0.1'
+    parser.version = version
     parser.add_argument('-g', '--gzip', action="store_true", help='Compress with GZIP')
     parser.add_argument('-o', '--output', action='store', type=str, help='Output Directory',required=True)
     parser.add_argument('-v','--version',action='version')
@@ -147,9 +147,3 @@ if __name__ == '__main__':
             parse(args.output, False)
         else:
             ctypes.windll.shell32.ShellExecuteW(None, u"runas", sys.executable, " ".join(sys.argv[1:]), None, 1)
-        
-
-    
-    
-
-    
