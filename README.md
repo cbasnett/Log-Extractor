@@ -13,7 +13,8 @@ optional arguments:
   -h, --help            show this help message and exit
   -g, --gzip            Compress with GZIP
   -o OUTPUT, --output OUTPUT
-                        Output Directory
+                        Output Directory or ES server path (http://username:password@host:port)
   -v, --version         show program's version number and exit
+  -e, --elastic         output to elasticsearch
   ```
   
